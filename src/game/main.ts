@@ -1,12 +1,14 @@
 import { Game as MainGame } from './scenes/Game';
+import { ChainVisualizationScene } from './scenes/ChainVisualizationScene';
 import { AUTO, Game, Types } from 'phaser';
 
-// Find out more information about the Game Config at:
-// https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
+/**
+ * Phaser game configuration
+ */
 const config: Types.Core.GameConfig = {
     type: AUTO,
     parent: 'game-container',
-    backgroundColor: '#028af8',
+    backgroundColor: '#1a1a2e',
     scale: {
         mode: Phaser.Scale.RESIZE,
         width: '100%',
@@ -15,10 +17,16 @@ const config: Types.Core.GameConfig = {
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
     scene: [
-        MainGame
+        MainGame,
+        ChainVisualizationScene
     ]
 };
 
+/**
+ * Creates and starts a new Phaser game instance
+ * @param parent - DOM element ID to mount the game to
+ * @returns Phaser Game instance
+ */
 const StartGame = (parent: string) => {
     return new Game({ ...config, parent });
 }

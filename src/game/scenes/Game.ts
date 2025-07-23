@@ -1,20 +1,18 @@
 import { Scene } from 'phaser';
 import { EventBus } from '../EventBus';
+import { CKBChainVizService, Block } from '../../services/CKBChainVizService';
 
 export class Game extends Scene {
-    // Sky background sprites
     private skyBackgroundCenter!: Phaser.GameObjects.TileSprite;
     private skyBackgroundLeft!: Phaser.GameObjects.TileSprite;
     private skyBackgroundRight!: Phaser.GameObjects.TileSprite;
 
-    // Grass background sprites
     private grassBackgroundCenter!: Phaser.GameObjects.TileSprite;
     private grassBackgroundLeft!: Phaser.GameObjects.TileSprite;
     private grassBackgroundRight!: Phaser.GameObjects.TileSprite;
 
     private roadPath!: Phaser.GameObjects.Image;
 
-    // Grass borders around the road
     private grassBorderTop!: Phaser.GameObjects.TileSprite;
     private grassBorderLeft!: Phaser.GameObjects.TileSprite;
     private grassBorderRight!: Phaser.GameObjects.TileSprite;
@@ -22,11 +20,9 @@ export class Game extends Scene {
 
     private gate!: Phaser.GameObjects.Image;
 
-    // Fence sprites
     private fenceLeft!: Phaser.GameObjects.TileSprite;
     private fenceRight!: Phaser.GameObjects.TileSprite;
 
-    // Grass bottom borders under fences
     private grassBottomBorderLeft!: Phaser.GameObjects.TileSprite;
     private grassBottomBorderRight!: Phaser.GameObjects.TileSprite;
 
@@ -34,14 +30,25 @@ export class Game extends Scene {
     private mainGameAreaLeftBound: number = 0;
     private mainGameAreaRightBound: number = 0;
 
+    private chainVizService: CKBChainVizService;
+    private leftOverlayContainer!: Phaser.GameObjects.Container;
+    private rightOverlayContainer!: Phaser.GameObjects.Container;
+    private leftOverlayBackground!: Phaser.GameObjects.Rectangle;
+    private rightOverlayBackground!: Phaser.GameObjects.Rectangle;
+    private blockInfoText!: Phaser.GameObjects.Text;
+    private metricsText!: Phaser.GameObjects.Text;
+    private transactionInfoText!: Phaser.GameObjects.Text;
+    private connectionStatusText!: Phaser.GameObjects.Text;
+
     constructor() {
         super('Game');
+        this.chainVizService = new CKBChainVizService();
     }
 
     /**
-     * Preload all game assets
+     * Preloads all game assets including backgrounds, roads, and UI elements
      */
-    preload() {
+    preload(): void {
         this.load.setPath('assets');
 
         this.load.image('sky', 'sky.png');
@@ -59,24 +66,20 @@ export class Game extends Scene {
     }
 
     /**
-     * Initialize the game scene and create all game objects
+     * Creates the game scene with backgrounds, road, and chain data overlays
      */
-    create() {
-        // Set scene background color
+    create(): void {
         this.cameras.main.setBackgroundColor('#E2C0A0');
         
         const screenWidth = this.scale.width;
         const screenCenterX = screenWidth / 2;
 
-        // Calculate main game area boundaries (1440px centered area)
         this.mainGameAreaLeftBound = screenCenterX - this.MAIN_GAME_AREA_WIDTH / 2;
         this.mainGameAreaRightBound = screenCenterX + this.MAIN_GAME_AREA_WIDTH / 2;
 
         this.renderSkyBackground();
         this.renderGrassBackground();
 
-        // Create road path centered in the game area
-        // Road Y position = sky height (264) + grass height (279) = 543
         this.roadPath = this.add.image(screenCenterX, 543, 'lane');
         this.roadPath.setOrigin(0.5, 1);
         this.roadPath.setDisplaySize(823, 176);
@@ -85,25 +88,26 @@ export class Game extends Scene {
         this.renderGate();
         this.renderGrassBottomBorders();
 
+        this.createChainDataOverlays();
+        this.initializeChainConnection();
+
         this.scale.on('resize', this.handleScreenResize, this);
 
         EventBus.emit('current-scene-ready', this);
     }
 
     /**
-     * Render sky background with three-part tiling system (center + left/right extensions)
-     * Handles responsive design for screens wider than main game area
+     * Renders tiled sky background with responsive extensions for wide screens
      */
     private renderSkyBackground(): void {
         const screenWidth = this.scale.width;
         const screenCenterX = screenWidth / 2;
-        const SKY_HEIGHT = 527; // Sky extends 2 rows (264 * 2 - 1) to avoid gaps
+        const SKY_HEIGHT = 527;
 
         if (this.skyBackgroundCenter) this.skyBackgroundCenter.destroy();
         if (this.skyBackgroundLeft) this.skyBackgroundLeft.destroy();
         if (this.skyBackgroundRight) this.skyBackgroundRight.destroy();
 
-        // Render main sky background in the center game area
         this.skyBackgroundCenter = this.add.tileSprite(
             screenCenterX,
             0,
@@ -113,7 +117,6 @@ export class Game extends Scene {
         );
         this.skyBackgroundCenter.setOrigin(0.5, 0);
 
-        // Render left sky extension if screen is wider than game area
         if (this.mainGameAreaLeftBound > 0) {
             const leftExtensionWidth = this.mainGameAreaLeftBound;
             this.skyBackgroundLeft = this.add.tileSprite(
@@ -126,7 +129,6 @@ export class Game extends Scene {
             this.skyBackgroundLeft.setOrigin(0.5, 0);
         }
 
-        // Render right sky extension if screen is wider than game area
         const rightExtensionWidth = screenWidth - this.mainGameAreaRightBound;
         if (rightExtensionWidth > 0) {
             this.skyBackgroundRight = this.add.tileSprite(
@@ -141,20 +143,18 @@ export class Game extends Scene {
     }
 
     /**
-     * Render grass background with three-part tiling system (center + left/right extensions)
-     * Positioned below sky background
+     * Renders tiled grass background positioned below the sky
      */
     private renderGrassBackground(): void {
         const screenWidth = this.scale.width;
         const screenCenterX = screenWidth / 2;
-        const GRASS_Y_POSITION = 264; // Grass starts below sky
+        const GRASS_Y_POSITION = 264;
         const GRASS_HEIGHT = 279;
 
         if (this.grassBackgroundCenter) this.grassBackgroundCenter.destroy();
         if (this.grassBackgroundLeft) this.grassBackgroundLeft.destroy();
         if (this.grassBackgroundRight) this.grassBackgroundRight.destroy();
 
-        // Render main grass background in the center game area
         this.grassBackgroundCenter = this.add.tileSprite(
             screenCenterX,
             GRASS_Y_POSITION,
@@ -164,7 +164,6 @@ export class Game extends Scene {
         );
         this.grassBackgroundCenter.setOrigin(0.5, 0);
 
-        // Render left grass extension if screen is wider than game area
         if (this.mainGameAreaLeftBound > 0) {
             const leftExtensionWidth = this.mainGameAreaLeftBound;
             this.grassBackgroundLeft = this.add.tileSprite(
@@ -177,7 +176,6 @@ export class Game extends Scene {
             this.grassBackgroundLeft.setOrigin(0.5, 0);
         }
 
-        // Render right grass extension if screen is wider than game area
         const rightExtensionWidth = screenWidth - this.mainGameAreaRightBound;
         if (rightExtensionWidth > 0) {
             this.grassBackgroundRight = this.add.tileSprite(
@@ -192,8 +190,7 @@ export class Game extends Scene {
     }
 
     /**
-     * Render decorative grass borders around the road
-     * Creates visual separation between road and grass areas
+     * Renders decorative grass borders around the road edges
      */
     private renderRoadGrassBorders(): void {
         const screenWidth = this.scale.width;
@@ -202,14 +199,13 @@ export class Game extends Scene {
         const ROAD_HEIGHT = 176;
         const roadLeftEdge = screenCenterX - ROAD_WIDTH / 2;
         const roadRightEdge = screenCenterX + ROAD_WIDTH / 2;
-        const roadTopEdge = 543 - ROAD_HEIGHT; // Road bottom at 543, so top = 543 - 176 = 367
+        const roadTopEdge = 543 - ROAD_HEIGHT;
 
         if (this.grassBorderTop) this.grassBorderTop.destroy();
         if (this.grassBorderLeft) this.grassBorderLeft.destroy();
         if (this.grassBorderRight) this.grassBorderRight.destroy();
         if (this.grassBorderBottom) this.grassBorderBottom.destroy();
 
-        // Top grass border - position 1px above road top to avoid gaps
         this.grassBorderTop = this.add.tileSprite(
             screenCenterX,
             roadTopEdge - 1,
@@ -219,7 +215,6 @@ export class Game extends Scene {
         );
         this.grassBorderTop.setOrigin(0.5, 0);
 
-        // Left grass border - height set to half of road height, top aligned with road
         this.grassBorderLeft = this.add.tileSprite(
             roadLeftEdge + 1,
             roadTopEdge,
@@ -229,7 +224,6 @@ export class Game extends Scene {
         );
         this.grassBorderLeft.setOrigin(1, 0);
 
-        // Right grass border - positioned 7px left from road right edge
         this.grassBorderRight = this.add.tileSprite(
             roadRightEdge - 7,
             roadTopEdge,
@@ -239,7 +233,6 @@ export class Game extends Scene {
         );
         this.grassBorderRight.setOrigin(0, 0);
 
-        // Bottom grass border - positioned at middle of road
         this.grassBorderBottom = this.add.tileSprite(
             roadLeftEdge + 368 / 2,
             roadTopEdge + ROAD_HEIGHT / 2,
@@ -251,8 +244,7 @@ export class Game extends Scene {
     }
 
     /**
-     * Render gate and fence elements
-     * Gate is positioned at road's bottom-right, fences extend to screen edges
+     * Renders the gate and fence elements around the game area
      */
     private renderGate(): void {
         const screenWidth = this.scale.width;
@@ -265,15 +257,13 @@ export class Game extends Scene {
         if (this.fenceLeft) this.fenceLeft.destroy();
         if (this.fenceRight) this.fenceRight.destroy();
 
-        // Gate positioned 20px to the right of road's right edge
         this.gate = this.add.image(roadRightEdge + 20, roadBottomEdge, 'gate');
         this.gate.setOrigin(1, 1);
 
-        // Left fence tiled from gate's left edge to screen left edge
         const gateLeftEdge = this.gate.x - this.gate.width;
         const fenceWidth = gateLeftEdge;
         const fenceHeight = 75;
-        const grassBottomEdge = 264 + 279; // Grass Y position + grass height = 543
+        const grassBottomEdge = 264 + 279;
 
         this.fenceLeft = this.add.tileSprite(
             gateLeftEdge / 2,
@@ -284,7 +274,6 @@ export class Game extends Scene {
         );
         this.fenceLeft.setOrigin(0.5, 1);
 
-        // Right fence tiled from gate's right edge to screen right edge
         const gateRightEdge = this.gate.x;
         const fenceRightWidth = screenWidth - gateRightEdge;
 
@@ -299,27 +288,24 @@ export class Game extends Scene {
     }
 
     /**
-     * Render grass bottom borders under the fence areas
-     * Provides visual continuity between fences and grass
+     * Renders grass borders under the fence areas
      */
     private renderGrassBottomBorders(): void {
         const screenWidth = this.scale.width;
         const ROAD_WIDTH = 823;
         const screenCenterX = screenWidth / 2;
         const roadRightEdge = screenCenterX + ROAD_WIDTH / 2;
-        const grassBottomEdge = 264 + 279; // Grass Y position + grass height = 543
+        const grassBottomEdge = 264 + 279;
         const grassBottomHeight = 10;
 
         if (this.grassBottomBorderLeft) this.grassBottomBorderLeft.destroy();
         if (this.grassBottomBorderRight) this.grassBottomBorderRight.destroy();
 
-        // Calculate fence areas based on gate position
         const gateRightEdge = roadRightEdge + 20;
-        const gateLeftEdge = gateRightEdge - 487; // Gate width approximation
+        const gateLeftEdge = gateRightEdge - 487;
         const fenceLeftWidth = gateLeftEdge;
         const fenceRightWidth = screenWidth - gateRightEdge;
 
-        // Left grass bottom border - tiled under left fence area
         this.grassBottomBorderLeft = this.add.tileSprite(
             gateLeftEdge / 2,
             grassBottomEdge,
@@ -329,7 +315,6 @@ export class Game extends Scene {
         );
         this.grassBottomBorderLeft.setOrigin(0.5, 1);
 
-        // Right grass bottom border - tiled under right fence area
         this.grassBottomBorderRight = this.add.tileSprite(
             gateRightEdge + fenceRightWidth / 2,
             grassBottomEdge,
@@ -341,31 +326,34 @@ export class Game extends Scene {
     }
 
     /**
-     * Handle screen resize events by recalculating positions and re-rendering all elements
-     * Ensures proper scaling and positioning on window resize
+     * Handles screen resize events by re-rendering all game elements
      */
     private handleScreenResize(): void {
         const screenWidth = this.scale.width;
         const screenCenterX = screenWidth / 2;
 
-        // Recalculate main game area boundaries for new screen size
         this.mainGameAreaLeftBound = screenCenterX - this.MAIN_GAME_AREA_WIDTH / 2;
         this.mainGameAreaRightBound = screenCenterX + this.MAIN_GAME_AREA_WIDTH / 2;
 
         this.renderSkyBackground();
         this.renderGrassBackground();
 
-        // Reposition road path to stay centered
         this.roadPath.setPosition(screenCenterX, 543);
         this.roadPath.setDisplaySize(823, 176);
 
         this.renderRoadGrassBorders();
         this.renderGate();
         this.renderGrassBottomBorders();
+        
+        if (this.rightOverlayContainer) {
+            const overlayWidth = 280;
+            const padding = 20;
+            this.rightOverlayContainer.x = screenWidth - overlayWidth - padding;
+        }
     }
 
     /**
-     * Get the boundaries of the main game area for game logic positioning
+     * Gets the boundaries of the main game area
      * @returns Object containing left bound, right bound, and total width
      */
     public getMainGameAreaBounds(): { left: number; right: number; width: number } {
@@ -374,5 +362,198 @@ export class Game extends Scene {
             right: this.mainGameAreaRightBound,
             width: this.MAIN_GAME_AREA_WIDTH,
         };
+    }
+
+    /**
+     * Creates semi-transparent overlays for displaying blockchain data
+     */
+    private createChainDataOverlays(): void {
+        const overlayWidth = 280;
+        const overlayHeight = 180;
+        const padding = 20;
+        const textStyle = {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontFamily: 'monospace',
+            lineSpacing: 2,
+        };
+
+        this.leftOverlayContainer = this.add.container(padding, padding);
+        
+        this.leftOverlayBackground = this.add.rectangle(0, 0, overlayWidth, overlayHeight, 0x000000, 0.7);
+        this.leftOverlayBackground.setOrigin(0, 0);
+        this.leftOverlayBackground.setStrokeStyle(2, 0x00ff00, 0.8);
+        
+        this.blockInfoText = this.add.text(10, 10, 'Block: Loading...', textStyle);
+        this.metricsText = this.add.text(10, 80, 'Metrics: Loading...', textStyle);
+        
+        this.leftOverlayContainer.add([this.leftOverlayBackground, this.blockInfoText, this.metricsText]);
+        
+        const screenWidth = this.scale.width;
+        this.rightOverlayContainer = this.add.container(screenWidth - overlayWidth - padding, padding);
+        
+        this.rightOverlayBackground = this.add.rectangle(0, 0, overlayWidth, overlayHeight, 0x000000, 0.7);
+        this.rightOverlayBackground.setOrigin(0, 0);
+        this.rightOverlayBackground.setStrokeStyle(2, 0x00ff00, 0.8);
+        
+        this.transactionInfoText = this.add.text(10, 10, 'Transactions: Loading...', textStyle);
+        
+        this.connectionStatusText = this.add.text(10, 120, 'Status: Disconnected', {
+            ...textStyle,
+            fontSize: '12px',
+            color: '#ff0000',
+        });
+        
+        this.rightOverlayContainer.add([this.rightOverlayBackground, this.transactionInfoText, this.connectionStatusText]);
+        
+        this.leftOverlayContainer.setDepth(1000);
+        this.rightOverlayContainer.setDepth(1000);
+    }
+
+    /**
+     * Initializes connection to CKB ChainViz service and loads initial data
+     */
+    private async initializeChainConnection(): Promise<void> {
+        try {
+            await this.chainVizService.connect();
+            
+            this.connectionStatusText.setText('Status: Connected');
+            this.connectionStatusText.setColor('#00ff00');
+            
+            this.chainVizService.subscribe('chain');
+            this.chainVizService.subscribe('transactions');
+            
+            this.setupChainEventListeners();
+            
+            const snapshot = await this.chainVizService.getSnapshot();
+            if (snapshot.latestBlock) {
+                this.updateBlockInfo(snapshot.latestBlock);
+            }
+            if (snapshot.pendingTransactions) {
+                this.updateTransactionInfo({
+                    pending: snapshot.pendingTransactions.length,
+                    proposed: snapshot.proposedTransactions?.length || 0,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to connect to ChainViz service:', error);
+            this.connectionStatusText.setText('Status: Connection Failed');
+            this.connectionStatusText.setColor('#ff0000');
+        }
+    }
+
+    /**
+     * Sets up event listeners for real-time blockchain data updates
+     */
+    private setupChainEventListeners(): void {
+        EventBus.on('block-finalized', (block: Block) => {
+            this.updateBlockInfo(block);
+        });
+
+        let pendingCount = 0;
+        let proposedCount = 0;
+        let confirmedCount = 0;
+        
+        EventBus.on('transaction-pending', () => {
+            pendingCount++;
+            this.updateTransactionInfo({ pending: pendingCount, proposed: proposedCount, confirmed: confirmedCount });
+        });
+        
+        EventBus.on('transaction-proposed', () => {
+            if (pendingCount > 0) pendingCount--;
+            proposedCount++;
+            this.updateTransactionInfo({ pending: pendingCount, proposed: proposedCount, confirmed: confirmedCount });
+        });
+        
+        EventBus.on('transaction-confirmed', () => {
+            if (proposedCount > 0) proposedCount--;
+            confirmedCount++;
+            this.updateTransactionInfo({ pending: pendingCount, proposed: proposedCount, confirmed: confirmedCount });
+            
+            this.time.delayedCall(5000, () => {
+                confirmedCount = 0;
+                this.updateTransactionInfo({ pending: pendingCount, proposed: proposedCount, confirmed: confirmedCount });
+            });
+        });
+        
+        EventBus.on('chainviz-disconnected', () => {
+            this.connectionStatusText.setText('Status: Disconnected');
+            this.connectionStatusText.setColor('#ff0000');
+        });
+    }
+
+    /**
+     * Updates the block information display in the left overlay
+     * @param block - Block data to display
+     */
+    private updateBlockInfo(block: Block): void {
+        const blockTime = new Date(parseInt(block.timestamp)).toLocaleTimeString();
+        const blockInfo = [
+            `Block: #${block.blockNumber}`,
+            `Hash: ${block.blockHash.slice(0, 14)}...`,
+            `Time: ${blockTime}`,
+            `Txs: ${block.transactionCount}`,
+        ].join('\n');
+        
+        this.blockInfoText.setText(blockInfo);
+        
+        const metricsInfo = [
+            `Miner: ${block.miner.slice(0, 14)}...`,
+            `Reward: ${block.reward}`,
+            `Proposals: ${block.proposalsCount || 0}`,
+            `Uncles: ${block.unclesCount || 0}`,
+        ].join('\n');
+        
+        this.metricsText.setText(metricsInfo);
+        
+        this.tweens.add({
+            targets: this.leftOverlayBackground,
+            alpha: 1,
+            duration: 200,
+            yoyo: true,
+            ease: 'Power2',
+        });
+    }
+
+    /**
+     * Updates the transaction counts display in the right overlay
+     * @param counts - Object containing pending, proposed, and confirmed transaction counts
+     */
+    private updateTransactionInfo(counts: { pending?: number; proposed?: number; confirmed?: number }): void {
+        const txInfo = [
+            'Transactions:',
+            `  Pending: ${counts.pending || 0}`,
+            `  Proposed: ${counts.proposed || 0}`,
+            `  Confirmed: ${counts.confirmed || 0}`,
+        ].join('\n');
+        
+        this.transactionInfoText.setText(txInfo);
+        
+        if (counts.confirmed && counts.confirmed > 0) {
+            this.tweens.add({
+                targets: this.rightOverlayBackground,
+                alpha: 1,
+                duration: 200,
+                yoyo: true,
+                ease: 'Power2',
+            });
+        }
+    }
+
+    /**
+     * Cleans up resources when the scene is shut down
+     */
+    shutdown(): void {
+        if (this.chainVizService.connected) {
+            this.chainVizService.unsubscribe('chain');
+            this.chainVizService.unsubscribe('transactions');
+            this.chainVizService.disconnect();
+        }
+        
+        EventBus.off('block-finalized');
+        EventBus.off('transaction-pending');
+        EventBus.off('transaction-proposed');
+        EventBus.off('transaction-confirmed');
+        EventBus.off('chainviz-disconnected');
     }
 }
